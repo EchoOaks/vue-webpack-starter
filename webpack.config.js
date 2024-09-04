@@ -9,6 +9,8 @@ const ESLintPlugin = require('eslint-webpack-plugin');
 const getAppEnv = require('./env').getAppEnv;
 
 module.exports = (env, argv) => {
+  const isProd = process.env.NODE_ENV === 'production';
+
   const config = {
     entry: {
       main: './src/app/main.ts',
@@ -40,17 +42,10 @@ module.exports = (env, argv) => {
         {
           test: /\.(scss|css)$/,
           use: [
-            process.env.NODE_ENV !== 'production'
-              ? 'vue-style-loader'
-              : MiniCssExtractPlugin.loader,
+            isProd ? MiniCssExtractPlugin.loader : 'vue-style-loader',
             { loader: 'css-loader', options: { url: false } },
             'postcss-loader',
-            {
-              loader: 'sass-loader',
-              options: {
-                additionalData: '@import "@/css/prepends";',
-              },
-            },
+            'sass-loader',
           ],
         },
       ],
@@ -63,33 +58,30 @@ module.exports = (env, argv) => {
     },
     plugins: [
       new VueLoaderPlugin(),
-      new ESLintPlugin({ extensions: ['js', 'vue', 'ts', 'tsx'] }),
+      new ESLintPlugin({
+        extensions: ['js', 'vue', 'ts', 'tsx'],
+        context: path.resolve(__dirname, 'src'), // Ensure it lints the right folder
+        eslintPath: require.resolve('eslint'),
+      }),
+      new HtmlWebpackPlugin({
+        template: './src/index.html',
+      }),
     ],
-    devtool: 'source-map',
+    devtool: isProd ? false : 'source-map',
     devServer: {
-      static: [
-        {
-          directory: path.join(__dirname, 'src'),
-          watch: argv.watch ? { ignored: ['**/*.scss'] } : false,
-        },
-      ],
-      host: process.env.HOST, // Defaults to `localhost`
-      port: process.env.PORT, // Defaults to 8080
+      static: {
+        directory: path.join(__dirname, 'src'),
+      },
+      hot: true,
+      host: process.env.HOST || 'localhost',
+      port: process.env.PORT || 8080,
       client: {
         overlay: true,
       },
     },
   };
 
-  if (process.env.NODE_ENV === 'development') {
-    config.plugins.push(
-      new HtmlWebpackPlugin({
-        template: './src/index.html',
-      })
-    );
-  }
-
-  if (process.env.NODE_ENV === 'production') {
+  if (isProd) {
     config.plugins.push(
       new MiniCssExtractPlugin({
         filename: 'css/app.[name].bundle.css',
@@ -104,22 +96,9 @@ module.exports = (env, argv) => {
             },
           },
         ],
-      }),
-      new HtmlWebpackPlugin({
-        template: './src/index.html',
       })
     );
   }
-
-  let appEnv = getAppEnv({ platform: env.platform });
-  if (config.output.publicPath) {
-    appEnv.BASE_PATH = config.output.publicPath;
-  }
-  config.plugins.push(
-    new webpack.DefinePlugin({
-      'process.env': JSON.stringify(appEnv),
-    })
-  );
 
   return config;
 };
